@@ -1,10 +1,13 @@
 package retopspq;
 
 import javafx.application.Application;
+import javafx.event.EventHandler;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
+import javafx.stage.WindowEvent;
+import retopspq.controller.PrincipalController;
 
 import java.io.IOException;
 
@@ -15,17 +18,21 @@ public class App extends Application {
 
     @Override
     public void start(Stage stage) throws IOException {
-        Scene scene = new Scene(loadFXML("view/Principal"), 1100, 735);
-        stage.setTitle("Untitled");
+        FXMLLoader loader = new FXMLLoader(App.class.getResource("view/Principal.fxml"));
+        Parent root = loader.load();
+        PrincipalController controller = loader.getController();
+        Scene scene = new Scene(root, 1100, 735);
+        stage.setTitle("Chat multiusuario");
         stage.setMinWidth(850);
         stage.setMinHeight(500);
         stage.setScene(scene);
+        stage.setOnCloseRequest(new EventHandler<WindowEvent>() {
+            @Override
+            public void handle(WindowEvent event) {
+                controller.closeConnection();
+            }
+        });
         stage.show();
-    }
-
-    private static Parent loadFXML(String fxml) throws IOException {
-        FXMLLoader fxmlLoader = new FXMLLoader(App.class.getResource(fxml + ".fxml"));
-        return fxmlLoader.load();
     }
 
     public static void main(String[] args) {

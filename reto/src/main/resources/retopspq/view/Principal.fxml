@@ -20,19 +20,19 @@
             </padding>
             <children>
                 <Label text="IP:" />
-                <TextField prefWidth="127.0" promptText="127.0.0.1" />
+                <TextField fx:id="ipField" prefWidth="127.0" text="127.0.0.1" />
                 <Label text="Puerto:" />
-                <TextField prefWidth="127.0" promptText="5000" />
+                <TextField fx:id="portField" prefWidth="90.0" text="5000" />
                 <Label text="Usuario:" />
-                <TextField prefWidth="127.0" promptText="Duxon" />
-                <Button mnemonicParsing="false" text="Conectar" />
-                <Button disable="true" mnemonicParsing="false" text="Desconectar" />
-                <Label style="-fx-font-weight: bold;" text="No conectado" />
+                <TextField fx:id="usernameField" prefWidth="127.0" promptText="Tu nombre" />
+                <Button fx:id="connectButton" mnemonicParsing="false" onAction="#onConnect" text="Conectar" />
+                <Button fx:id="disconnectButton" disable="true" mnemonicParsing="false" onAction="#onDisconnect" text="Desconectar" />
+                <Label fx:id="statusLabel" style="-fx-font-weight: bold;" text="No conectado" />
             </children>
         </HBox>
     </top>
     <center>
-        <TextArea editable="false" style="-fx-background-color: white; -fx-border-color: #00aeef; -fx-border-width: 2px; -fx-control-inner-background: white;" wrapText="true" />
+        <TextArea fx:id="chatArea" editable="false" style="-fx-background-color: white; -fx-border-color: #00aeef; -fx-border-width: 2px; -fx-control-inner-background: white;" wrapText="true" />
     </center>
     <bottom>
         <HBox alignment="CENTER_LEFT" spacing="14.0">
@@ -40,11 +40,11 @@
                 <Insets bottom="20.0" left="28.0" right="14.0" top="18.0" />
             </padding>
             <children>
-                <CheckBox mnemonicParsing="false" text="Privado" />
+                <CheckBox fx:id="privateCheckBox" mnemonicParsing="false" onAction="#onPrivateToggled" text="Privado" />
                 <Label text="Para:" />
-                <TextField prefWidth="126.0" promptText="admin" />
-                <TextField HBox.hgrow="ALWAYS" />
-                <Button mnemonicParsing="false" text="Enviar" />
+                <TextField fx:id="recipientField" disable="true" prefWidth="126.0" promptText="Usuario" />
+                <TextField fx:id="messageField" HBox.hgrow="ALWAYS" onAction="#onSend" promptText="Escribe un mensaje..." />
+                <Button fx:id="sendButton" disable="true" mnemonicParsing="false" onAction="#onSend" text="Enviar" />
             </children>
         </HBox>
     </bottom>
