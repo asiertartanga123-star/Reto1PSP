@@ -2,7 +2,10 @@ package retopspq.server;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
@@ -186,64 +189,63 @@ public final class ChatServer implements AutoCloseable {
             }
         }
         if (removed) {
-            broadcast(encode("INFO", client.username + " ha salido del chat."), null);
+            broadcast(new String[] {"INFO", client.username + " ha salido del chat."}, null);
         }
     }
 
-    private void handleFrame(ClientConnection sender, String frame) throws IOException {
-        if (frame.length() > MAX_FRAME_LENGTH) {
-            sender.send(encode("ERROR", "El mensaje supera el tamano permitido."));
+    void handleFrame(ClientConnection sender, String[] frame) throws IOException {
+        if (frame == null || frame.length == 0) {
+            sender.send(new String[] {"ERROR", "Formato de mensaje no valido."});
             return;
         }
-        String[] parts = frame.split("\\|", -1);
         try {
-            if ("PUBLIC".equals(parts[0]) && parts.length == 2) {
-                handlePublicMessage(sender, decode(parts[1]));
-            } else if ("PRIVATE".equals(parts[0]) && parts.length == 3) {
-                handlePrivateMessage(sender, decode(parts[1]), decode(parts[2]));
+            if ("PUBLIC".equals(frame[0]) && frame.length == 2) {
+                handlePublicMessage(sender, frame[1]);
+            } else if ("PRIVATE".equals(frame[0]) && frame.length == 3) {
+                handlePrivateMessage(sender, frame[1], frame[2]);
             } else {
-                sender.send(encode("ERROR", "Formato de mensaje no valido."));
+                sender.send(new String[] {"ERROR", "Formato de mensaje no valido."});
             }
         } catch (IllegalArgumentException exception) {
-            sender.send(encode("ERROR", "El mensaje contiene datos no validos."));
+            sender.send(new String[] {"ERROR", "El mensaje contiene datos no validos."});
         }
     }
 
     private void handlePublicMessage(ClientConnection sender, String message) throws IOException {
         if (!isValidMessage(message)) {
-            sender.send(encode("ERROR", "El mensaje no puede estar vacio ni superar 2000 caracteres."));
+            sender.send(new String[] {"ERROR", "El mensaje no puede estar vacio ni superar 2000 caracteres."});
             return;
         }
         logger.log("PUBLICO | " + sender.username + " | " + logSafe(message));
         lastMessage.set("Publico de " + sender.username + ": " + logSafe(message));
-        broadcast(encode("PUBLIC", sender.username, message), null);
+        broadcast(new String[] {"PUBLIC", sender.username, message}, null);
     }
 
     private void handlePrivateMessage(ClientConnection sender, String recipientName, String message)
             throws IOException {
         if (!isValidMessage(message)) {
-            sender.send(encode("ERROR", "El mensaje no puede estar vacio ni superar 2000 caracteres."));
+            sender.send(new String[] {"ERROR", "El mensaje no puede estar vacio ni superar 2000 caracteres."});
             return;
         }
         ClientConnection recipient = findClient(recipientName);
         if (recipient == null) {
-            sender.send(encode("ERROR", "El destinatario no esta conectado."));
+            sender.send(new String[] {"ERROR", "El destinatario no esta conectado."});
             return;
         }
         if (recipient == sender) {
-            sender.send(encode("ERROR", "No puedes enviarte un mensaje privado a ti mismo."));
+            sender.send(new String[] {"ERROR", "No puedes enviarte un mensaje privado a ti mismo."});
             return;
         }
 
         logger.log("PRIVADO | " + sender.username + " para " + recipient.username + " | " + logSafe(message));
         lastMessage.set("Privado de " + sender.username + " para " + recipient.username + ": "
                 + logSafe(message));
-        String frame = encode("PRIVATE", sender.username, recipient.username, message);
+        String[] frame = new String[] {"PRIVATE", sender.username, recipient.username, message};
         try {
             recipient.send(frame);
         } catch (IOException exception) {
             unregister(recipient);
-            sender.send(encode("ERROR", "No se pudo entregar el mensaje: el destinatario se ha desconectado."));
+            sender.send(new String[] {"ERROR", "No se pudo entregar el mensaje: el destinatario se ha desconectado."});
             return;
         }
         sender.send(frame);
@@ -260,7 +262,7 @@ public final class ChatServer implements AutoCloseable {
         }
     }
 
-    private void broadcast(String frame, ClientConnection excluded) {
+    private     void broadcast(String[] frame, ClientConnection excluded) {
         for (ClientConnection client : clientSnapshot()) {
             if (client != excluded) {
                 try {
@@ -272,7 +274,6 @@ public final class ChatServer implements AutoCloseable {
             }
         }
     }
-
     private static boolean isValidMessage(String message) {
         return !message.trim().isEmpty() && message.length() <= MAX_MESSAGE_LENGTH;
     }
@@ -297,8 +298,8 @@ public final class ChatServer implements AutoCloseable {
     private final class ClientConnection implements Runnable {
         private final Socket socket;
         private String username;
-        private BufferedReader reader;
-        private PrintWriter writer;
+        private ObjectInputStream objectReader;
+        private ObjectOutputStream objectWriter;
 
         private ClientConnection(Socket socket) {
             this.socket = socket;
@@ -308,32 +309,36 @@ public final class ChatServer implements AutoCloseable {
         public void run() {
             try (Socket clientSocket = socket) {
                 clientSocket.setSoTimeout(LOGIN_TIMEOUT_MILLIS);
-                reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(),
-                        StandardCharsets.UTF_8));
-                writer = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(),
-                        StandardCharsets.UTF_8), true);
+                objectWriter = new ObjectOutputStream(clientSocket.getOutputStream());
+                objectWriter.flush();
+                objectReader = new ObjectInputStream(clientSocket.getInputStream());
 
-                String login = reader.readLine();
-                String loginError = parseLogin(login);
+                Object loginMessage = objectReader.readObject();
+                String loginError = parseLogin(loginMessage);
                 if (loginError != null) {
-                    send(encode("REJECT", loginError));
+                    send(new String[] {"REJECT", loginError});
                     return;
                 }
 
                 String registrationError = register(this);
                 if (registrationError != null) {
-                    send(encode("REJECT", registrationError));
+                    send(new String[] {"REJECT", registrationError});
                     return;
                 }
 
-                send(encode("WELCOME", username));
+                send(new String[] {"WELCOME", username});
                 clientSocket.setSoTimeout(0);
-                broadcast(encode("INFO", username + " se ha unido al chat."), this);
-                String frame;
-                while ((frame = reader.readLine()) != null) {
-                    handleFrame(this, frame);
+                broadcast(new String[] {"INFO", username + " se ha unido al chat."}, this);
+                while (true) {
+                    Object message = objectReader.readObject();
+                    if (message == null) {
+                        break;
+                    }
+                    if (message instanceof String[]) {
+                        handleFrame(this, (String[]) message);
+                    }
                 }
-            } catch (IOException exception) {
+            } catch (IOException | ClassNotFoundException exception) {
                 if (!closed) {
                     System.err.println("Conexion finalizada con error: " + exception.getMessage());
                 }
@@ -344,17 +349,17 @@ public final class ChatServer implements AutoCloseable {
             }
         }
 
-        private String parseLogin(String frame) {
-            if (frame == null || frame.length() > MAX_FRAME_LENGTH) {
+        private String parseLogin(Object frame) {
+            if (!(frame instanceof String[])) {
                 return "No se recibio un nombre de usuario valido.";
             }
-            String[] parts = frame.split("\\|", -1);
+            String[] parts = (String[]) frame;
             if (parts.length != 2 || !"LOGIN".equals(parts[0])) {
                 return "Debes identificarte antes de enviar mensajes.";
             }
             try {
-                username = decode(parts[1]).trim();
-            } catch (IllegalArgumentException exception) {
+                username = parts[1].trim();
+            } catch (RuntimeException exception) {
                 return "El nombre de usuario no es valido.";
             }
             if (username.isEmpty() || username.length() > MAX_USERNAME_LENGTH) {
@@ -368,11 +373,9 @@ public final class ChatServer implements AutoCloseable {
             return null;
         }
 
-        private synchronized void send(String frame) throws IOException {
-            writer.println(frame);
-            if (writer.checkError()) {
-                throw new IOException("No se pudo escribir en el socket del cliente.");
-            }
+        private synchronized void send(String[] frame) throws IOException {
+            objectWriter.writeObject(frame);
+            objectWriter.flush();
         }
     }
 

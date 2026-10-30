@@ -1,14 +1,10 @@
 package retopspq.controller;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
@@ -47,7 +43,8 @@ public class PrincipalController {
     private TextArea chatArea;
 
     private volatile Socket clientSocket;
-    private volatile PrintWriter clientWriter;
+    private volatile ObjectOutputStream clientWriter;
+    private volatile ObjectInputStream clientReader;
     private volatile String currentUsername;
     private volatile boolean connecting;
 
@@ -103,6 +100,7 @@ public class PrincipalController {
         Socket socket = clientSocket;
         clientSocket = null;
         clientWriter = null;
+        clientReader = null;
         currentUsername = null;
         if (socket != null) {
             try {
@@ -127,26 +125,28 @@ public class PrincipalController {
             return;
         }
 
-        String frame;
+        String[] frame;
         if (privateCheckBox.isSelected()) {
             String recipient = recipientField.getText().trim();
             if (recipient.isEmpty()) {
                 statusLabel.setText("Indica el destinatario del mensaje privado.");
                 return;
             }
-            frame = encode("PRIVATE", recipient, message);
+            frame = new String[] {"PRIVATE", recipient, message};
         } else {
-            frame = encode("PUBLIC", message);
+            frame = new String[] {"PUBLIC", message};
         }
 
-        PrintWriter writer = clientWriter;
+        ObjectOutputStream writer = clientWriter;
         if (writer == null) {
             statusLabel.setText("No hay una conexion activa.");
             return;
         }
         synchronized (writer) {
-            writer.println(frame);
-            if (writer.checkError()) {
+            try {
+                writer.writeObject(frame);
+                writer.flush();
+            } catch (IOException exception) {
                 closeConnection();
                 statusLabel.setText("Se perdio la conexion con el servidor.");
                 return;
@@ -165,27 +165,29 @@ public class PrincipalController {
         try {
             socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
             socket.setSoTimeout(LOGIN_TIMEOUT_MILLIS);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(),
-                    StandardCharsets.UTF_8));
-            PrintWriter writer = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(),
-                    StandardCharsets.UTF_8), true);
-            writer.println(encode("LOGIN", username));
-            if (writer.checkError()) {
-                throw new IOException("No se pudo enviar el nombre de usuario.");
-            }
+            ObjectOutputStream writer = new ObjectOutputStream(socket.getOutputStream());
+            writer.flush();
+            ObjectInputStream reader = new ObjectInputStream(socket.getInputStream());
 
-            String response = reader.readLine();
-            String[] fields = splitFrame(response);
-            if (fields.length == 2 && "REJECT".equals(fields[0])) {
-                throw new IOException(decode(fields[1]));
+            writer.writeObject(new String[] {"LOGIN", username});
+            writer.flush();
+
+            Object responseObj = reader.readObject();
+            if (!(responseObj instanceof String[])) {
+                throw new IOException("El servidor envio una respuesta de conexion no valida.");
             }
-            if (fields.length != 2 || !"WELCOME".equals(fields[0]) || !username.equals(decode(fields[1]))) {
+            String[] fields = (String[]) responseObj;
+            if (fields.length == 2 && "REJECT".equals(fields[0])) {
+                throw new IOException(fields[1]);
+            }
+            if (fields.length != 2 || !"WELCOME".equals(fields[0]) || !username.equals(fields[1])) {
                 throw new IOException("El servidor envio una respuesta de conexion no valida.");
             }
 
             socket.setSoTimeout(0);
             clientSocket = socket;
             clientWriter = writer;
+            clientReader = reader;
             currentUsername = username;
             connecting = false;
             Platform.runLater(new Runnable() {
@@ -206,7 +208,7 @@ public class PrincipalController {
             }, "chat-receiver-" + username);
             receiver.setDaemon(true);
             receiver.start();
-        } catch (IOException | IllegalArgumentException exception) {
+        } catch (IOException | ClassNotFoundException | IllegalArgumentException exception) {
             closeSocket(socket);
             connecting = false;
             Platform.runLater(new Runnable() {
@@ -221,14 +223,19 @@ public class PrincipalController {
         }
     }
 
-    private void receiveMessages(Socket socket, BufferedReader reader) {
+    private void receiveMessages(Socket socket, ObjectInputStream reader) {
         String disconnectReason = "El servidor ha cerrado la conexion.";
         try {
-            String frame;
-            while ((frame = reader.readLine()) != null) {
-                displayFrame(frame);
+            while (true) {
+                Object message = reader.readObject();
+                if (message == null) {
+                    break;
+                }
+                if (message instanceof String[]) {
+                    displayFrame((String[]) message);
+                }
             }
-        } catch (IOException exception) {
+        } catch (IOException | ClassNotFoundException exception) {
             if (!socket.isClosed()) {
                 disconnectReason = "Conexion perdida: " + exception.getMessage();
             }
@@ -236,6 +243,7 @@ public class PrincipalController {
             if (clientSocket == socket) {
                 clientSocket = null;
                 clientWriter = null;
+                clientReader = null;
                 currentUsername = null;
                 String reason = disconnectReason;
                 Platform.runLater(new Runnable() {
@@ -252,29 +260,34 @@ public class PrincipalController {
         }
     }
 
-    private void displayFrame(String frame) {
+    private void displayFrame(String[] fields) {
         try {
-            String[] fields = splitFrame(frame);
             switch (fields[0]) {
                 case "INFO":
                     requireFieldCount(fields, 2);
-                    appendMessage(decode(fields[1]));
+                    appendMessage(fields[1]);
                     break;
                 case "PUBLIC":
                     requireFieldCount(fields, 3);
-                    appendMessage("[Publico] " + decode(fields[1]) + ": " + decode(fields[2]));
+                    appendMessage("[Publico] " + fields[1] + ": " + fields[2]);
                     break;
                 case "PRIVATE":
                     requireFieldCount(fields, 4);
-                    String sender = decode(fields[1]);
-                    String recipient = decode(fields[2]);
+                    String sender = fields[1];
+                    String recipient = fields[2];
                     String direction = sender.equals(currentUsername)
                             ? "para " + recipient : "de " + sender;
-                    appendMessage("[Privado " + direction + "] " + decode(fields[3]));
+                    appendMessage("[Privado " + direction + "] " + fields[3]);
                     break;
                 case "ERROR":
                     requireFieldCount(fields, 2);
-                    appendMessage("Error: " + decode(fields[1]));
+                    appendMessage("Error: " + fields[1]);
+                    break;
+                case "REJECT":
+                    requireFieldCount(fields, 2);
+                    throw new IOException(fields[1]);
+                case "WELCOME":
+                    requireFieldCount(fields, 2);
                     break;
                 default:
                     appendMessage("El servidor envio un mensaje desconocido.");
@@ -320,30 +333,10 @@ public class PrincipalController {
         return false;
     }
 
-    private static String encode(String type, String... values) {
-        StringBuilder frame = new StringBuilder(type);
-        for (String value : values) {
-            frame.append('|').append(Base64.getUrlEncoder().withoutPadding()
-                    .encodeToString(value.getBytes(StandardCharsets.UTF_8)));
-        }
-        return frame.toString();
-    }
-
-    private static String[] splitFrame(String frame) throws IOException {
-        if (frame == null || frame.length() > 8_192) {
-            throw new IOException("El servidor envio un mensaje vacio o demasiado largo.");
-        }
-        return frame.split("\\|", -1);
-    }
-
     private static void requireFieldCount(String[] fields, int expected) {
         if (fields.length != expected) {
             throw new IllegalArgumentException("Numero de campos incorrecto.");
         }
-    }
-
-    private static String decode(String value) {
-        return new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
     }
 
     private static void closeSocket(Socket socket) {
