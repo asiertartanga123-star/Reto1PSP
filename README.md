@@ -24,6 +24,16 @@ java -cp target\classes retopspq.server.ChatServer 5000 20 5
 
 El servidor muestra periodicamente el numero de usuarios conectados, su tiempo activo y el ultimo mensaje recibido. Las entradas, salidas y mensajes se guardan en `servidor.log`, en el directorio desde el que se inicia el proceso.
 
+### Clases principales del servidor
+
+- `ChatServer` es el punto de entrada: lee la configuracion, abre el puerto y mantiene el servidor activo.
+- `ClientConnection` atiende a un cliente en un hilo independiente, valida su identificacion y recibe sus mensajes.
+- `ClientRegistry` controla las conexiones activas, evita nombres repetidos, difunde mensajes y retira clientes desconectados.
+- `ChatMessageHandler` valida y enruta mensajes publicos y privados.
+- `ChatLogger` anade al fichero `servidor.log` las entradas, salidas y mensajes con su fecha y hora.
+
+El recorrido para presentar es: `ChatServer` acepta una conexion, crea un `ClientConnection`, este registra el usuario en `ClientRegistry` y entrega cada mensaje a `ChatMessageHandler`. La respuesta se envia al destinatario o se difunde a los clientes conectados; `ChatLogger` conserva los eventos.
+
 ## Ejecutar el cliente
 
 Desde una terminal, entra en `reto` (o en `Cliente` si has descomprimido el ZIP) y ejecuta:
