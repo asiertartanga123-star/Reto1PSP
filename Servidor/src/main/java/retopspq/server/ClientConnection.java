@@ -10,13 +10,25 @@ import java.net.Socket;
  * Cada instancia se ejecuta en su propio hilo.
  */
 final class ClientConnection implements Runnable {
+    // Tiempo máximo que el cliente tiene para identificarse.
     private static final int LOGIN_TIMEOUT_MILLIS = 10_000;
+
+    // Límite máximo de caracteres para el nombre de usuario.
     private static final int MAX_USERNAME_LENGTH = 24;
 
+    // Socket dedicado a este cliente.
     private final Socket socket;
+
+    // Registro central de usuarios activos en el servidor.
     private final ClientRegistry clients;
+
+    // Manejador de mensajes del protocolo del chat.
     private final ChatMessageHandler messageHandler;
+
+    // Nombre del usuario actual.
     private String username;
+
+    // Flujos para leer y escribir objetos con el cliente.
     private ObjectInputStream objectReader;
     private ObjectOutputStream objectWriter;
 
@@ -29,11 +41,13 @@ final class ClientConnection implements Runnable {
     @Override
     public void run() {
         try (Socket clientSocket = socket) {
+            // Pantalla de espera para recibir el login del cliente.
             clientSocket.setSoTimeout(LOGIN_TIMEOUT_MILLIS);
             objectWriter = new ObjectOutputStream(clientSocket.getOutputStream());
             objectWriter.flush();
             objectReader = new ObjectInputStream(clientSocket.getInputStream());
 
+            // Lee el primer frame, que debe ser el login del usuario.
             Object loginMessage = objectReader.readObject();
             String loginError = parseLogin(loginMessage);
             if (loginError != null) {
@@ -41,17 +55,19 @@ final class ClientConnection implements Runnable {
                 return;
             }
 
+            // Intenta registrar el usuario en el servidor.
             String registrationError = clients.register(this);
             if (registrationError != null) {
                 send(new String[] {"REJECT", registrationError});
                 return;
             }
 
+            // Envío de bienvenida y anuncio de entrada al resto.
             send(new String[] {"WELCOME", username});
             clientSocket.setSoTimeout(0);
             clients.broadcast(new String[] {"INFO", username + " se ha unido al chat."}, this);
 
-            // Mientras la conexion siga abierta, cada objeto recibido es una peticion del cliente.
+            // Mientras la conexión esté abierta, cada objeto recibido será un mensaje del cliente.
             while (true) {
                 Object message = objectReader.readObject();
                 if (message == null) {
@@ -66,12 +82,14 @@ final class ClientConnection implements Runnable {
                 System.err.println("Conexion finalizada con error: " + exception.getMessage());
             }
         } finally {
+            // Si el usuario quedó registrado, se elimina del listado al cerrar.
             if (username != null) {
                 clients.unregister(this);
             }
         }
     }
 
+    // Valida el nombre de usuario enviado durante el login.
     private String parseLogin(Object frame) {
         if (!(frame instanceof String[])) {
             return "No se recibio un nombre de usuario valido.";
@@ -96,10 +114,12 @@ final class ClientConnection implements Runnable {
         return null;
     }
 
+    // Devuelve el nombre del usuario asociado a esta conexión.
     String username() {
         return username;
     }
 
+    // Envía un frame al cliente de forma sincronizada.
     void send(String[] frame) throws IOException {
         synchronized (this) {
             objectWriter.writeObject(frame);
@@ -107,6 +127,7 @@ final class ClientConnection implements Runnable {
         }
     }
 
+    // Cierra el socket para forzar la desconexión del cliente.
     void closeSocket() throws IOException {
         socket.close();
     }

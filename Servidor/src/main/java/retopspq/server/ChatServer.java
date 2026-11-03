@@ -8,16 +8,32 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * Coordina el arranque, la aceptacion de conexiones y el cierre del servidor.
+ * Coordina el arranque, la aceptación de conexiones y el cierre del servidor.
+ * Es la clase principal del servicio de chat.
  */
 public final class ChatServer implements AutoCloseable {
+    // Puerto donde escuchará el servidor.
     private final int port;
+
+    // Número máximo de clientes simultáneos permitidos.
     private final int maxClients;
+
+    // Intervalo entre mensajes de estadísticas.
     private final int statsIntervalSeconds;
+
+    // Momento en el que el servidor se inició para calcular el tiempo activo.
     private final long startedAt = System.currentTimeMillis();
+
+    // Logger encargado de guardar todos los eventos del sistema en un archivo.
     private final ChatLogger logger = new ChatLogger(Paths.get("servidor.log"));
+
+    // Registro de clientes actualmente conectados.
     private final ClientRegistry clients;
+
+    // Encargado de interpretar y distribuir los mensajes del chat.
     private final ChatMessageHandler messageHandler;
+
+    // Socket principal del servidor.
     private ServerSocket serverSocket;
 
     private ChatServer(int port, int maxClients, int statsIntervalSeconds) {
@@ -28,7 +44,10 @@ public final class ChatServer implements AutoCloseable {
         messageHandler = new ChatMessageHandler(clients, logger);
     }
 
-    /** Lee los argumentos, configura el cierre seguro y pone en marcha el servidor. */
+    /**
+     * Arranca el servidor con los argumentos de configuración indicados.
+     * Lee puerto, máximo de clientes e intervalo de estadísticas.
+     */
     public static void main(String[] args) throws IOException {
         int port = parseArgument(args, 0, 5000, "puerto");
         int maxClients = parseArgument(args, 1, 10, "numero maximo de clientes");
@@ -47,6 +66,7 @@ public final class ChatServer implements AutoCloseable {
         server.run();
     }
 
+    // Convierte un argumento textual a entero y valida el valor.
     private static int parseArgument(String[] args, int index, int defaultValue, String name) {
         if (args.length <= index) {
             return defaultValue;
@@ -58,9 +78,12 @@ public final class ChatServer implements AutoCloseable {
         }
     }
 
+    // Inicializa el socket del servidor y comienza la espera de clientes.
     private void run() throws IOException {
         serverSocket = new ServerSocket(port);
         System.out.println("Servidor iniciado en el puerto " + port + ". Maximo de clientes: " + maxClients + ".");
+
+        // Hilo independiente que muestra estadísticas periódicas del estado del chat.
         Thread statsThread = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -71,7 +94,7 @@ public final class ChatServer implements AutoCloseable {
         statsThread.start();
 
         try {
-            // Cada conexion se procesa en paralelo para atender a varios usuarios a la vez.
+            // Acepta conexiones en bucle. Cada cliente se procesa en su propio hilo.
             while (!clients.isServerClosed()) {
                 Socket socket = serverSocket.accept();
                 socket.setTcpNoDelay(true);
@@ -91,6 +114,7 @@ public final class ChatServer implements AutoCloseable {
 
     @Override
     public void close() {
+        // Marca el servidor como cerrado para evitar nuevas conexiones.
         clients.closeServer();
         if (serverSocket != null && !serverSocket.isClosed()) {
             try {
@@ -100,6 +124,7 @@ public final class ChatServer implements AutoCloseable {
             }
         }
 
+        // Cierra todas las conexiones activas de clientes.
         List<ClientConnection> connectedClients = clients.snapshot();
         for (ClientConnection client : connectedClients) {
             try {
@@ -111,6 +136,7 @@ public final class ChatServer implements AutoCloseable {
         }
     }
 
+    // Muestra por consola cuántos clientes están conectados y cuánto tiempo lleva activo.
     private void printStatistics() {
         while (!clients.isServerClosed()) {
             try {

@@ -8,12 +8,22 @@ import java.util.Map;
 
 /**
  * Mantiene la lista de clientes conectados y centraliza las operaciones compartidas.
+ * Esta clase actúa como registro central del servidor.
  */
 final class ClientRegistry {
+    // Límite máximo de clientes simultáneos permitidos.
     private final int maxClients;
+
+    // Logger para registrar eventos de entrada y salida.
     private final ChatLogger logger;
+
+    // Objeto de bloqueo para proteger la estructura compartida de clientes.
     private final Object clientsLock = new Object();
+
+    // Mapa que guarda los clientes conectados por nombre de usuario.
     private final Map<String, ClientConnection> clients = new LinkedHashMap<>();
+
+    // Señal para indicar que el servidor ha sido cerrado.
     private volatile boolean serverClosed;
 
     ClientRegistry(int maxClients, ChatLogger logger) {
@@ -21,6 +31,7 @@ final class ClientRegistry {
         this.logger = logger;
     }
 
+    // Registra a un cliente si cumple las reglas del servidor.
     String register(ClientConnection client) throws IOException {
         synchronized (clientsLock) {
             if (clients.size() >= maxClients) {
@@ -37,6 +48,7 @@ final class ClientRegistry {
         }
     }
 
+    // Elimina a un cliente de la lista y registra su desconexión.
     void unregister(ClientConnection client) {
         boolean removed;
         synchronized (clientsLock) {
@@ -55,6 +67,7 @@ final class ClientRegistry {
         }
     }
 
+    // Busca un cliente por nombre ignorando mayúsculas y minúsculas.
     ClientConnection find(String username) {
         synchronized (clientsLock) {
             for (ClientConnection client : clients.values()) {
@@ -66,6 +79,7 @@ final class ClientRegistry {
         }
     }
 
+    // Envía un frame a todos los clientes conectados salvo al excluido.
     void broadcast(String[] frame, ClientConnection excluded) {
         for (ClientConnection client : snapshot()) {
             if (client != excluded) {
@@ -79,22 +93,26 @@ final class ClientRegistry {
         }
     }
 
+    // Devuelve la cantidad de clientes actualmente conectados.
     int size() {
         synchronized (clientsLock) {
             return clients.size();
         }
     }
 
+    // Genera una copia de la colección para evitar problemas de concurrencia.
     List<ClientConnection> snapshot() {
         synchronized (clientsLock) {
             return new ArrayList<>(clients.values());
         }
     }
 
+    // Marca el servidor como cerrado para evitar aceptar nuevas conexiones.
     void closeServer() {
         serverClosed = true;
     }
 
+    // Indica si el servidor está cerrado.
     boolean isServerClosed() {
         return serverClosed;
     }
