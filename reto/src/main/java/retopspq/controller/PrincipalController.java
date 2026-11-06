@@ -44,7 +44,6 @@ public class PrincipalController {
 
     private volatile Socket clientSocket;
     private volatile ObjectOutputStream clientWriter;
-    private volatile ObjectInputStream clientReader;
     private volatile String currentUsername;
     private volatile boolean connecting;
 
@@ -65,28 +64,23 @@ public class PrincipalController {
         try {
             port = Integer.parseInt(portField.getText().trim());
         } catch (NumberFormatException exception) {
-            showConnectionError("El puerto debe ser un numero entre 1 y 65535.");
+            statusLabel.setText("El puerto debe ser un numero entre 1 y 65535.");
             return;
         }
         if (host.isEmpty() || port < 1 || port > 65_535) {
-            showConnectionError("Indica una IP o nombre de servidor y un puerto valido.");
+            statusLabel.setText("Indica una IP o nombre de servidor y un puerto valido.");
             return;
         }
         if (username.isEmpty() || username.length() > MAX_USERNAME_LENGTH
                 || containsControlCharacter(username)) {
-            showConnectionError("El nombre debe tener entre 1 y 24 caracteres y no contener controles.");
+            statusLabel.setText("El nombre debe tener entre 1 y 24 caracteres y no contener controles.");
             return;
         }
 
         connecting = true;
         statusLabel.setText("Conectando...");
         updateControls();
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                openConnection(host, port, username);
-            }
-        }, "chat-connect");
+        Thread thread = new Thread(() -> openConnection(host, port, username), "chat-connect");
         thread.setDaemon(true);
         thread.start();
     }
@@ -100,7 +94,6 @@ public class PrincipalController {
         Socket socket = clientSocket;
         clientSocket = null;
         clientWriter = null;
-        clientReader = null;
         currentUsername = null;
         if (socket != null) {
             try {
@@ -187,37 +180,25 @@ public class PrincipalController {
             socket.setSoTimeout(0);
             clientSocket = socket;
             clientWriter = writer;
-            clientReader = reader;
             currentUsername = username;
             connecting = false;
-            Platform.runLater(new Runnable() {
-                @Override
-                public void run() {
-                    if (clientSocket == socket) {
-                        statusLabel.setText("Conectado como " + username);
-                        appendMessage("Conectado al servidor " + host + ":" + port + ".");
-                        updateControls();
-                    }
+            Platform.runLater(() -> {
+                if (clientSocket == socket) {
+                    statusLabel.setText("Conectado como " + username);
+                    appendMessage("Conectado al servidor " + host + ":" + port + ".");
+                    updateControls();
                 }
             });
-            Thread receiver = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    receiveMessages(socket, reader);
-                }
-            }, "chat-receiver-" + username);
+            Thread receiver = new Thread(() -> receiveMessages(socket, reader), "chat-receiver-" + username);
             receiver.setDaemon(true);
             receiver.start();
         } catch (IOException | ClassNotFoundException | IllegalArgumentException exception) {
             closeSocket(socket);
             connecting = false;
-            Platform.runLater(new Runnable() {
-                @Override
-                public void run() {
-                    if (clientSocket == null) {
-                        statusLabel.setText("Error de conexion: " + exception.getMessage());
-                        updateControls();
-                    }
+            Platform.runLater(() -> {
+                if (clientSocket == null) {
+                    statusLabel.setText("Error de conexion: " + exception.getMessage());
+                    updateControls();
                 }
             });
         }
@@ -243,16 +224,12 @@ public class PrincipalController {
             if (clientSocket == socket) {
                 clientSocket = null;
                 clientWriter = null;
-                clientReader = null;
                 currentUsername = null;
                 String reason = disconnectReason;
-                Platform.runLater(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (clientSocket == null) {
-                            statusLabel.setText(reason);
-                            updateControls();
-                        }
+                Platform.runLater(() -> {
+                    if (clientSocket == null) {
+                        statusLabel.setText(reason);
+                        updateControls();
                     }
                 });
             }
@@ -311,17 +288,8 @@ public class PrincipalController {
         sendButton.setDisable(!connected);
     }
 
-    private void showConnectionError(String message) {
-        statusLabel.setText(message);
-    }
-
     private void appendMessage(String message) {
-        Platform.runLater(new Runnable() {
-            @Override
-            public void run() {
-                chatArea.appendText(message + System.lineSeparator());
-            }
-        });
+        Platform.runLater(() -> chatArea.appendText(message + System.lineSeparator()));
     }
 
     private static boolean containsControlCharacter(String value) {

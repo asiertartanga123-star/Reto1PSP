@@ -1,42 +1,34 @@
-# Chat multiusuario - Reto PSP
+# Chat multiusuario
 
-Aplicacion cliente-servidor Java para conversar por mensajes publicos y privados. El cliente grafico JavaFX esta en `reto` y el servidor de consola independiente en `Servidor`. El archivo `ChatMultiusuario.zip` contiene el proyecto preparado en las carpetas `Cliente` y `Servidor`.
+Proyecto de PSP hecho con Java. Tiene un servidor de consola y un cliente con ventana JavaFX. En este repositorio, el cliente está en `reto`; en el ZIP de entrega, las carpetas se llaman `Cliente` y `Servidor`.
+
+Los usuarios pueden enviar mensajes publicos a todos o mensajes privados a otro usuario.
 
 ## Requisitos
 
 - JDK 11 o superior.
 - Maven.
 
-## Ejecutar el servidor
+## Iniciar el servidor
 
-Desde una terminal, entra en `Servidor` y ejecuta:
+Abre una terminal en la carpeta `Servidor` y ejecuta:
 
 ```text
 mvn package
-java -cp target\classes retopspq.server.ChatServer [puerto] [maximo-clientes] [intervalo-estadisticas-segundos]
+java -cp target\classes retopspq.server.ChatServer
 ```
 
-Los argumentos son opcionales; sus valores por defecto son `5000`, `10` y `10`. Por ejemplo, para permitir 20 clientes y mostrar estadisticas cada 5 segundos:
+El servidor usa el puerto `5000`, permite 10 usuarios y muestra estadisticas cada 10 segundos. Puedes cambiar esos valores pasando tres numeros: puerto, limite de usuarios e intervalo. Por ejemplo:
 
 ```text
 java -cp target\classes retopspq.server.ChatServer 5000 20 5
 ```
 
-El servidor muestra periodicamente el numero de usuarios conectados, su tiempo activo y el ultimo mensaje recibido. Las entradas, salidas y mensajes se guardan en `servidor.log`, en el directorio desde el que se inicia el proceso.
+Las conexiones y los mensajes se guardan en `servidor.log`.
 
-### Clases principales del servidor
+## Iniciar el cliente
 
-- `ChatServer` es el punto de entrada: lee la configuracion, abre el puerto y mantiene el servidor activo.
-- `ClientConnection` atiende a un cliente en un hilo independiente, valida su identificacion y recibe sus mensajes.
-- `ClientRegistry` controla las conexiones activas, evita nombres repetidos, difunde mensajes y retira clientes desconectados.
-- `ChatMessageHandler` valida y enruta mensajes publicos y privados.
-- `ChatLogger` anade al fichero `servidor.log` las entradas, salidas y mensajes con su fecha y hora.
-
-El recorrido para presentar es: `ChatServer` acepta una conexion, crea un `ClientConnection`, este registra el usuario en `ClientRegistry` y entrega cada mensaje a `ChatMessageHandler`. La respuesta se envia al destinatario o se difunde a los clientes conectados; `ChatLogger` conserva los eventos.
-
-## Ejecutar el cliente
-
-Desde una terminal, entra en `reto` (o en `Cliente` si has descomprimido el ZIP) y ejecuta:
+Abre otra terminal en `reto` (o en `Cliente` si estás usando el ZIP) y ejecuta:
 
 ```text
 mvn javafx:run
@@ -44,11 +36,8 @@ mvn javafx:run
 
 ## Uso
 
-1. Inicia el servidor y abre tantos clientes como necesites, hasta el limite configurado.
-2. En cada cliente, indica la IP, el puerto y un nombre de usuario unico y pulsa **Conectar**.
-3. Escribe un mensaje y pulsa **Enviar** para mandarlo publicamente a todos los conectados.
-4. Para enviar un mensaje privado, activa **Privado**, escribe el nombre del destinatario y envia el mensaje. Solo lo reciben el destinatario y el emisor.
-5. Pulsa **Desconectar** para salir. Si el servidor esta lleno o el nombre ya esta en uso, el cliente muestra el motivo.
-
-El puerto debe estar accesible entre los equipos que ejecutan el servidor y los clientes. Para probar en un solo equipo, usa `127.0.0.1`.
-# Reto1PSP
+1. Inicia el servidor y luego abre un cliente por cada usuario.
+2. En cada cliente, indica la IP y el puerto del servidor, escribe un nombre de usuario y pulsa **Conectar**. Para probar en el mismo ordenador, usa `127.0.0.1`.
+3. Escribe un mensaje y pulsa **Enviar** para enviarlo públicamente a todos los usuarios conectados.
+4. Para enviar un mensaje privado, marca **Privado**, escribe el nombre del destinatario en **Para**, redacta el mensaje y pulsa **Enviar**. El chat indica si cada mensaje es público o privado y quién lo envió.
+5. Pulsa **Desconectar** para salir del chat. Si se cierra la ventana, el cliente también cierra su conexión.
